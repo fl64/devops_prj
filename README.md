@@ -30,7 +30,7 @@ CI\CD:
 - Название проекта: devops-prj
 - Зона: europe-west4-a
 
-![](https://imgur.com/ytFUq7k)
+![](https://i.imgur.com/Tixv91V.png)
 
 ## Установка окружения
 
