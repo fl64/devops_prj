@@ -1,0 +1,49 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  config.ssh.private_key_path =  ["~/.ssh/id_rsa", "~/.ssh/dockerhost", "~/.vagrant.d/insecure_private_key"]
+  config.ssh.insert_key = false
+  config.ssh.forward_agent = true
+  config.vm.box_check_update = false
+  config.vm.box = "ubuntu/xenial64"
+
+  config.vm.provider :virtualbox do |v|
+    v.memory = 2048
+  end
+
+  config.vm.define "gitlab" do |gitlab|
+    gitlab.vm.hostname = "gitlab"
+    gitlab.vm.network :private_network, ip: "10.0.0.10"
+
+    gitlab.vm.provision "file", source: "~/.ssh/id_rsa.pub", destination: "~/.ssh/id_rsa.pub"
+    gitlab.vm.provision "file", source: "~/.ssh/dockerhost.pub", destination: "~/.ssh/dockerhost.pub"
+    gitlab.vm.provision "shell", privileged: false, inline: "cat ~/.ssh/*.pub > ~/.ssh/authorized_keys"
+    gitlab.vm.provision "shell", privileged: true , inline: "apt install python -y"
+    gitlab.vm.provision "ansible" do |ansible|
+      ansible.playbook = "./playbooks/dockerhost.yaml"
+      ansible.groups = {
+      "gitlab" => ["gitlab"],
+      }
+    end
+  end
+
+  config.vm.define "prod" do |prod|
+    prod.vm.hostname = "prod"
+    prod.vm.network :private_network, ip: "10.0.0.20"
+
+    prod.vm.provision "file", source: "~/.ssh/id_rsa.pub", destination: "~/.ssh/id_rsa.pub"
+    prod.vm.provision "file", source: "~/.ssh/dockerhost.pub", destination: "~/.ssh/dockerhost.pub"
+    prod.vm.provision "shell", privileged: false, inline: "cat ~/.ssh/*.pub > ~/.ssh/authorized_keys"
+    prod.vm.provision "shell", privileged: true , inline: "apt install python -y"
+
+    prod.vm.provision "ansible" do |ansible|
+      ansible.playbook = "./playbooks/dockerhost.yaml"
+      ansible.groups = {
+      "prod" => ["prod"],
+      }
+
+    end
+  end
+end

@@ -1,0 +1,44 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+hosts = [
+  { name: 'gitlab', ipaddr1: '10.0.0.10', ipaddr2: '192.168.200.10', memory: '256' },
+  { name: 'prod', ipaddr1: '10.0.0.20', ipaddr2: '192.168.200.20', memory:'256' },
+]
+
+Vagrant.configure("2") do |config|
+
+  config.ssh.private_key_path =  ["~/.ssh/id_rsa", "~/.ssh/dockerhost", "~/.vagrant.d/insecure_private_key"]
+  config.ssh.insert_key = false
+
+  config.ssh.forward_agent = true
+
+  config.vm.box_check_update = false
+  config.vm.box = "ubuntu/xenial64"
+
+  hosts.each do |host|
+    config.vm.define host[:name] do |srv|
+      srv.vm.hostname = host[:name]
+      srv.vm.network :private_network, ip: host[:ipaddr1], netmask: '255.255.255.0'
+      if host[:ipaddr2] != nil
+          srv.vm.network :private_network, ip: host[:ipaddr2], netmask: '255.255.255.0'
+      end
+      # srv.vm.provision "shell", privileged: true,  inline: "useradd -p $(echo P@ssw0rd | openssl passwd -1 -stdin) --groups sudo -m dockerhost || true"
+
+      srv.vm.provision "file", source: "~/.ssh/id_rsa.pub", destination: "~/.ssh/id_rsa.pub"
+      srv.vm.provision "file", source: "~/.ssh/dockerhost.pub", destination: "~/.ssh/dockerhost.pub"
+      srv.vm.provision "shell", privileged: false, inline: "cat ~/.ssh/*.pub > ~/.ssh/authorized_keys"
+
+      srv.vm.provider :virtualbox do |vb|
+        modifyvm_args = ['modifyvm', :id]
+        modifyvm_args << "--memory" << host[:memory]
+        modifyvm_args << "--name" << host[:name]
+        modifyvm_args << "--natdnsproxy1" << "on"
+        modifyvm_args << "--natdnshostresolver1" << "on"
+        vb.customize(modifyvm_args)
+        vb.name = host[:name]
+        vb.linked_clone = true
+      end
+    end
+  end
+end

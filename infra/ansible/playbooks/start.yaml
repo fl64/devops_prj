@@ -1,0 +1,3 @@
+---
+- import_playbook: dockerhost.yaml
+- import_playbook: gitlab-ci.yaml

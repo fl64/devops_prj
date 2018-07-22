@@ -1,0 +1,105 @@
+image: python:3.6-alpine
+
+stages:
+- build
+- test
+- review
+- prod
+
+#variables:
+#  DATABASE_URL: 'mongodb://mongo/user_posts'
+
+before_script:
+- export homedir=$(pwd)
+
+build_job:
+  image: docker:latest
+  stage: build
+  services:
+  - docker:dind # Required to run docker commands
+  # https://github.com/ayufan/gitlab-ci-multi-runner/blob/master/docs/executors/docker.md#the-services-keyword
+  script:
+    - docker login --username ${DOCKERHUB_USERNAME} --password ${DOCKERHUB_PASSWORD}
+    - echo 'Building crwaler'
+    - docker build -t ${DOCKERHUB_USERNAME}/search_engine_crawler:${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID} -t ${DOCKERHUB_USERNAME}/search_engine_crawler:latest src/search_engine_crawler/
+    - docker build -t ${DOCKERHUB_USERNAME}/search_engine_ui:${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID} -t ${DOCKERHUB_USERNAME}/search_engine_ui:latest src/search_engine_ui/
+    - docker push ${DOCKERHUB_USERNAME}/search_engine_crawler:${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}
+    - docker push ${DOCKERHUB_USERNAME}/search_engine_ui:${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}
+
+test:
+  stage: test
+  script:
+    - cd src/search_engine_crawler/
+    - pip install --upgrade pip && pip install -r requirements.txt -r requirements-test.txt
+    - python -m unittest discover -s tests/
+    - coverage run -m unittest discover -s tests/
+    - coverage report --include crawler/crawler.py
+    - cd $homedir
+    - cd src/search_engine_ui/
+    - pip install --upgrade pip && pip install -r requirements.txt -r requirements-test.txt
+    - python -m unittest discover -s tests/
+    - coverage run -m unittest discover -s tests/
+    - coverage report --include ui/ui.py
+#  only:
+#  - branches
+
+branch review:
+  image: docker:latest
+  stage: review
+  #services:
+  #- docker:dind # Required to run docker commands
+  script:
+  - apk update
+  - apk add --no-cache py-pip curl docker
+  - base=https://github.com/docker/machine/releases/download/v0.14.0 && curl -L $base/docker-machine-$(uname -s)-$(uname -m) >/tmp/docker-machine && install /tmp/docker-machine docker-machine
+  - echo ${GCP_CRED} > key.json
+  - export GOOGLE_APPLICATION_CREDENTIALS=key.json
+  - ./docker-machine create --driver google --google-project "${GCP_PRJ}" --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts --google-machine-type n1-standard-1 --google-disk-size "50" --google-tags docker-host,app-test --google-zone "${GCP_ZONE}" "${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}"
+  - eval $(./docker-machine env --shell sh ${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID})
+  - pip install docker-compose
+  - docker-compose version
+  - cd docker
+  - appver=${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}; sed s/changeme/$appver/g .env.example > .env
+  - cat .env
+  - docker-compose up -d
+  environment:
+    name: branch/$CI_COMMIT_REF_NAME
+    url: http://$CI_ENVIRONMENT_SLUG.example.com
+#  only:
+#  - branches
+#  except:
+#  - master
+
+kill branch review:
+  stage: review
+  image: google/cloud-sdk:alpine
+  script:
+  - echo ${GCP_CRED} > key.json
+  - export GOOGLE_APPLICATION_CREDENTIALS=key.json
+  - gcloud auth activate-service-account --key-file=key.json
+  - gcloud config set project "${GCP_PRJ}"
+  - gcloud compute instances delete "${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}" --zone=${GCP_ZONE} --quiet
+  when: manual
+  environment:
+    name: branch/$CI_COMMIT_REF_NAME
+
+prod:
+  stage: prod
+  script:
+  - apk --update add openssh-client
+  - mkdir -p ~/.ssh
+  - echo "$PROD_PRIV_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+  - chmod 600 ~/.ssh/id_rsa
+  - eval "$(ssh-agent -s)"
+  - ssh-add ~/.ssh/id_rsa
+  - ssh-keyscan -H ${PROD_IP} >> ~/.ssh/known_hosts
+  - scp -v docker/.env.example docker/docker-compose.yml docker/docker-compose-monitoring.yml dockerhost@${PROD_IP}:~/
+  - appver=${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}; ssh dockerhost@${PROD_IP} "sed 's/changeme/$appver/g' .env.example > .env"
+  - ssh dockerhost@${PROD_IP} 'bash -c "sudo docker-compose -f docker-compose-logging.yml up -d"'
+  - ssh dockerhost@${PROD_IP} 'bash -c "sudo docker-compose -f docker-compose.yml -f docker-compose-monitoring.yml up -d"'
+  environment:
+    name: production
+    url: http://${PROD_IP}:8000
+  when: manual
+  only:
+    - master

@@ -1,0 +1,88 @@
+version: '2.0'
+services:
+  mongo:
+    image: mongo:${MONGO_VER}
+    restart: always
+    volumes:
+    - mongo_data:/data/db:rw
+    networks:
+      appnet:
+        aliases:
+        - mongo
+
+  rabbitmq:
+    image: ${USER_NAME}/search_engine_rabbitmq:${RABBITMQ_VER}
+    restart: always
+    ports:
+    - "4369:4369"
+    - "5671:5671"
+    - "5672:5672"
+    - "15672:15672"
+    volumes:
+    - rabbitmq_data:/var/lib/rabbitmq:rw
+    networks:
+      appnet:
+        aliases:
+        - rabbitmq
+##    logging:
+##       driver: "fluentd"
+##       options:
+##         fluentd-address: localhost:24224
+##         tag: service.rabbitmq
+
+  sec:
+    image: ${USER_NAME}/search_engine_crawler:${SEC_VER}
+    restart: always
+    environment:
+    - MONGO=mongo
+    - MONGO_PORT=27017
+    - RMQ_HOST=rabbitmq
+    - RMQ_QUEUE=test_queue
+    - RMQ_USERNAME=guest
+    - RMQ_PASSWORD=guest
+    - EXCLUDE_URLS=.*github.com
+    depends_on:
+      - mongo
+      - rabbitmq
+    networks:
+      appnet:
+        aliases:
+        - sec
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: service.sec
+
+
+  seu:
+    image: ${USER_NAME}/search_engine_ui:${SEU_VER}
+    restart: always
+    environment:
+    - MONGO=mongo
+    - MONGO_PORT=27017
+    ports:
+    - "8000:8000"
+    depends_on:
+      - mongo
+    networks:
+      appnet:
+        aliases:
+        - seu
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: service.seu
+
+
+volumes:
+  rabbitmq_data:
+  mongo_data:
+
+networks:
+  appnet:
+    driver: bridge
+    ipam:
+       config:
+       - subnet: 10.0.0.0/24

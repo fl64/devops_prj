@@ -1,0 +1,38 @@
+---
+# tasks file for gitlab-ci-runners
+
+- debug: msg="{{ runners_count }}"
+
+- name: Install gitlab-ci-runners
+  docker_container:
+    name: "{{ item }}"
+    image: gitlab/gitlab-runner:latest
+    state: started
+    restart_policy: always
+    volumes:
+    - '/srv/{{ item }}/config:/etc/gitlab-runner'
+    - '/var/run/docker.sock:/var/run/docker.sock'
+  # Не работает :(
+  #  command:
+  #    '/usr/bin/gitlab-runner register --non-interactive --executor "docker" --docker-image "alpine:latest" --url "http://35.204.158.99/" --registration-token "xxx" --description "docker-runner" --tag-list "docker" '
+  tags: gitlab-ci, gitlab-runner
+  with_sequence: start=0 end="{{ runners_count | int -1 }}" format=gitlab-runner-%03x
+  register: result
+
+- name: get my public IP
+  ipify_facts:
+  tags: gitlab-ci
+
+- name: Show my public IP
+  debug: var=ipify_public_ip
+  tags: gitlab-ci
+
+- name: Install gitlab-ci-runners
+  shell: |
+      docker exec -i {{ item }} /usr/bin/gitlab-runner register --non-interactive --url=http://{{ ipify_public_ip }} \
+      --executor=docker --docker-privileged=true --docker-image=alpine:latest --registration-token={{ gitlabci_token }} \
+      --description=docker-runner --tag-list=docker --run-untagged=true --locked=false
+  tags: gitlab-ci, gitlab-runner
+  with_sequence: start=0 end="{{ runners_count | int - 1 }}" format=gitlab-runner-%03x
+  when: result.changed
+

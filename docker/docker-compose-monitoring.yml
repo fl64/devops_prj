@@ -1,0 +1,81 @@
+version: '2.0'
+services:
+  prometheus:
+    image: ${USER_NAME}/search_engine_prometheus:${PROMETHEUS_VER}
+    ports:
+      - '9090:9090'
+    volumes:
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention=1d'
+    networks:
+      appnet:
+        aliases:
+        - prometheus
+
+  alertmanager:
+    image: ${USER_NAME}/search_engine_alertmanager:${ALERTMANAGER_VER}
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+    ports:
+      - 9093:9093
+    networks:
+      appnet:
+        aliases:
+        - alertmanager
+
+  mongodb-exporter:
+    image: ${USER_NAME}/mongodb_exporter:${MONGODB_EXPORTER_VER}
+    ports:
+      - 9216:9216
+    environment:
+      - MONGODB_URL=mongodb://mongo
+    networks:
+      appnet:
+        aliases:
+        - mongodb-exporter
+
+  node-exporter:
+    image: prom/node-exporter:${NODE_EXPORTER_VER}
+    user: root
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
+    networks:
+      appnet:
+        aliases:
+        - node-exporter
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VER}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=secret
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    networks:
+      appnet:
+        aliases:
+        - grafana
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  appnet:
+    driver: bridge
+    ipam:
+       config:
+       - subnet: 10.0.0.0/24

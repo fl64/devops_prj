@@ -1,0 +1,7 @@
+---
+- name: Deploy runners
+  hosts: gitlab #название группы, которое автоматически формируется скриптом my_gcp_inv.py (берется тег GCP вида tagpart1-tagpart2, в качестве группы используется tagpart2). Т.к. тег docker-host, то название группы - host.
+  become: true
+
+  roles:
+    - gitlab-ci-runners

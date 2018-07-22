@@ -1,0 +1,60 @@
+---
+# tasks file for gitlab-ci
+- name: Create dirs
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+  - "/srv/gitlab/config"
+  - "/srv/gitlab/data"
+  - "/srv/gitlab/logs"
+  tags: gitlab-ci
+
+- name: get my public IP
+  ipify_facts:
+  tags: gitlab-ci
+
+- name: Show my public IP
+  debug: var=ipify_public_ip
+  tags: gitlab-ci
+
+
+- name: Create docker-compose.yml
+  template:
+    src: "docker-compose.yml.j2"
+    dest: "/srv/gitlab/docker-compose.yml"
+  tags: gitlab-ci
+  when: create_docker_compose_file | bool
+
+# Можно запустить создание gitlab-ci через docker-compose, но мне интересней через ansible
+
+- name: Install gitlab-ci
+  docker_container:
+    name: gitlab
+    image: gitlab/gitlab-ce:latest
+    state: started
+    restart_policy: always
+    ports:
+    - "80:80"
+    - "443:443"
+    - "2222:22"
+    volumes:
+    - '/srv/gitlab/config:/etc/gitlab'
+    - '/srv/gitlab/logs:/var/log/gitlab'
+    - '/srv/gitlab/data:/var/opt/gitlab'
+    env:
+      GITLAB_OMNIBUS_CONFIG: "external_url 'http://{{ ipify_public_ip }}'"
+  when: not (create_docker_compose_file | bool)
+  tags: gitlab-ci
+
+- name: Install gitlab-ci-runner
+  docker_container:
+    name: gitlab-runner
+    image: gitlab/gitlab-runner:latest
+    state: started
+    restart_policy: always
+    volumes:
+    - '/srv/gitlab-runner/config:/etc/gitlab-runner'
+    - '/var/run/docker.sock:/var/run/docker.sock'
+  when: not (create_docker_compose_file | bool)
+  tags: gitlab-ci, gitlab-runner

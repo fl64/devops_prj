@@ -1,0 +1,7 @@
+---
+- name: Install dockerhost
+  hosts: gitlab #название группы, которое автоматически формируется скриптом my_gcp_inv.py (берется второй тег GCP).
+  become: true
+
+  roles:
+    - gitlab-ci
