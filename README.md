@@ -39,7 +39,7 @@ CI\CD:
 - Наличие учетной записи и денежных средств в GCP.
 - Рабочая станция под управлением Linux (проверялось на Fedora 28)
 - Установленное ПО:
-	- Git 2.17.1
+	- клиент Git
 	- Google Cloud SDK 208.0.1
 	- Ansible 2.5.0
 	- Terraform 0.11.7
@@ -49,36 +49,37 @@ CI\CD:
 - настроить аккаунт и проект в GCP:
 	- `gcloud init`
 	- `gcloud auth application-default login`
+	- `gcloud config set project devops-prj`
+
 - клонировать данный репозиторий `git clone https://github.com/fl64/devops_prj`
-- сгенерировать ssh-ключи для доступа к виртуальным серверам `ssh-keygen -t rsa -f dockerhost -C 'dockerhost' -q -N ''`
+- сгенерировать ssh-ключи для доступа к виртуальным серверам `ssh-keygen -t rsa -f dockerhost -C 'dockerhost' -q -N '' && mv dockerhost* ~/.ssh/`
 - создать сервисную учетную запись в GCP
 	- `gcloud iam service-accounts create devops-prj-sa --display-name "DevOps Prj Service Account"`
 	- Проверить: `gcloud iam service-accounts list`
 	- Вывести список ролей `gcloud iam roles list`
 	- Добавить роль для сервисоного аккаунта: `gcloud projects add-iam-policy-binding devops-prj --member serviceAccount:devops-prj-sa@devops-prj.iam.gserviceaccount.com --role roles/owner`
-	-- создать файл ключ для сервисного аккаунта (пригодится при настройки gitlab): `gcloud iam service-accounts keys create key.json --iam-account SA-NAME@PROJECT-ID.iam.gserviceaccount.com` пример: `gcloud iam service-accounts keys create key.json --iam-account devops-prj-sa@devops-prj.iam.gserviceaccount.com` **todo: уточнить требуемую роль**
+	-- создать файл ключ для сервисного аккаунта (пригодится при настройки gitlab): `gcloud iam service-accounts keys create key.json --iam-account devops-prj-sa@devops-prj.iam.gserviceaccount.com` **todo: уточнить требуемую роль**
 
 С использованием terrform установить 2 вртуальных сервера в GCP (Gitlab CI и Prod-сервер)
 - в каталоге infra/terraform
 	- задать значения переменнных в файле .terraform.tfvars (пример настроек приведен в .terraform.tfvars.example)
 	- `terraform plan`
 	- `terraform apply`
-Зафиксировать публичные адреса созданных виртуальных серверов (`terraform output`).
+	- зафиксировать публичные адреса созданных виртуальных серверов (`terraform output`)
+	- добавиь запись gitlab в /etc/hosts
 
-Установить docker/docker-compose на серверах и Gitlab на сервере Gitlab.
-- в каталоге infra/asnible
-	- выполнить `ansible playbooks/start.yml`
+Установить docker/docker-compose на серверах и Gitlab на сервере Gitlab, для этого в каталоге infra/asnible выполнить `ansible playbooks/start.yml`
 
 ### Подготовка оповещений в Slack
-- в конфигурационный файл alertmanager (config.yml) добавиь хук для подключения к slack и канал для отправки оповещений
-- собрать контейнер и выполнит пуш на hub.docker.com (docker/alertmanager/build.sh)
+- в конфигурационный файл alertmanager (config.yml) добавиь хук для подключения к slack и название канала для отправки оповещений
+- собрать контейнер `/docker/alermanager/build.sh` и выполнит пуш на hub.docker.com (docker/alertmanager/build.sh)
 
 ### Настройка Gitlab CI
-- Перейти по адресу http://gitlib-ci-ip/
+- Перейти по адресу http://gitlib/
 - На стартовой странице задать пароль пользователя root и выполнить вход
-- перейти по ссылке http://gitlib-ci-ip/admin, Settings --> Sign-up restrictions, убрать маркер Sign-up enabled
-- перейти по ссылке http://gitlib-ci-ip/dashboard/groups --> New group --> Group name: devops-prj
-- перейти по ссылке http://gitlib-ci-ip/projects/new --> Project-name: app
+- перейти по ссылке http://gitlib/admin, Settings --> Sign-up restrictions, убрать маркер Sign-up enabled
+- перейти по ссылке http://gitlib/dashboard/groups --> New group --> Group name: devops-prj
+- перейти по ссылке http://gitlib/projects/new --> Project-name: app
 - в настройках группы devops-prj (devops-prj --> app --> CI / CD Settings --> Variables) задать значения переменных:
 	- DOCKERHUB_USERNAME - логин на docker hub
 	- DOCKERHUB_PASSWORD - пароль на docker hub
@@ -110,7 +111,7 @@ docker exec -i gitlab-runner /usr/bin/gitlab-runner register \
 ### Настройка Git для gitlab
 Выполнить настройку для GIT в gitlab CI и запушить все даныне
 ```
-git remote add gitlab http://<gitlab-ci-ip>/devops_prj/app.git
+git remote add gitlab http://gitlab/devops_prj/app.git
 #git add .
 #git commit -m "Initial commit"
 
@@ -123,6 +124,5 @@ git push gitlab --all
 	- `ssh dockerhost@gitlab-ip "sudo docker kill $(sudo docker ps -a -q)"`
 	- `ssh dockerhost@gitlab-ip "sudo docker rm $(sudo docker ps -a -q)"`
 - повторить установку gitlab ci + раннеров с использрванием ansible.
-- повторить процедуру добавления репозитория.
 
 !!! При слишком частом запуске деплоя на прод, адрес GitlabCI может быть забанен ssh guard. Для избежания этого на VM Prod, адрес Gitlab CI необходимо внести в witelist (/etc/sshguard/whitelist).
