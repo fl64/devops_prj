@@ -53,6 +53,26 @@ services:
         aliases:
         - node-exporter
 
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter:${RMQ_EXPORTER_VER}
+    #depends_on:
+    #  - "rabbitmq"
+    ports:
+      - "9419:9419"
+    environment:
+      RABBIT_URL: "http://rabbitmq:15672"
+      RABBIT_USER: "guest"
+      RABBIT_PASSWORD: "guest"
+      PUBLISH_PORT: "9419"
+      OUTPUT_FORMAT: "JSON"
+      LOG_LEVEL: "info"
+      RABBIT_CAPABILITIES: "bert,no_sort"
+    networks:
+      appnet:
+        aliases:
+        - rabbitmq-exporter
+
+
   grafana:
     image: grafana/grafana:${GRAFANA_VER}
     volumes:
